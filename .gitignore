@@ -1,0 +1,8 @@
+data/几何校正样例/
+data/Beijing/
+data/延时遥测数据北京时间/
+.DS_Store
+.vscode/
+几何校正样例.rar
+延时遥测数据北京时间.rar
+__pycache__/
