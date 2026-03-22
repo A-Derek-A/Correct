@@ -1,8 +1,71 @@
 import numpy as np
 import math
 from skyfield.api import EarthSatellite, load, wgs84
+from skyfield.positionlib import ICRF
+from skyfield.api import Distance
 
-def calculate_target_lonlat(tle_line1, tle_line2, altitude_m, roll_deg, pitch_deg, yaw_deg, obs_time=None):
+
+def calculate_target_lonlat_from_pos(
+    sat_lon_deg, sat_lat_deg,
+    next_sat_lon_deg, next_sat_lat_deg,
+    altitude_m, roll_deg, pitch_deg, yaw_deg,
+    roll_compensate=-0.019879, pitch_compensate=-1.056718, yaw_compensate=0.0, alpha=0.15,
+):
+    """
+    根据卫星实测经纬度（无需 TLE）和姿态角，计算卫星视线与地面的交点经纬度。
+
+    参数:
+        sat_lon_deg (float): 当前时刻卫星地理经度 (度)
+        sat_lat_deg (float): 当前时刻卫星地理纬度 (度)
+        next_sat_lon_deg (float): 下一时刻卫星地理经度 (度)，用于计算航向角
+        next_sat_lat_deg (float): 下一时刻卫星地理纬度 (度)，用于计算航向角
+        altitude_m (float): 卫星实测地理高度 (米)
+        roll_deg (float): 横滚角 (绕X轴, 度)
+        pitch_deg (float): 俯仰角 (绕Y轴, 度)
+        yaw_deg (float): 偏航角 (绕Z轴, 度)
+
+    返回:
+        tuple: (目标点经度, 目标点纬度) 单位: 度
+    """
+    lat0_rad = math.radians(sat_lat_deg)
+    lon0_rad = math.radians(sat_lon_deg)
+    lat1_rad = math.radians(next_sat_lat_deg)
+    lon1_rad = math.radians(next_sat_lon_deg)
+
+    dlon = lon1_rad - lon0_rad
+    y_heading = math.sin(dlon) * math.cos(lat1_rad)
+    x_heading = math.cos(lat0_rad) * math.sin(lat1_rad) - math.sin(lat0_rad) * math.cos(lat1_rad) * math.cos(dlon)
+    heading_rad = math.atan2(y_heading, x_heading)
+
+    roll_deg = roll_deg + roll_compensate * alpha
+    pitch_deg = pitch_deg + pitch_compensate * alpha
+    yaw_deg = yaw_deg + yaw_compensate * alpha
+
+    roll = math.radians(roll_deg)
+    pitch = math.radians(pitch_deg)
+    yaw = math.radians(yaw_deg)
+
+    v_ox = math.cos(yaw) * math.sin(pitch) * math.cos(roll) + math.sin(yaw) * math.sin(roll)
+    v_oy = math.sin(yaw) * math.sin(pitch) * math.cos(roll) - math.cos(yaw) * math.sin(roll)
+    v_oz = math.cos(pitch) * math.cos(roll)
+
+    if v_oz <= 0:
+        raise ValueError("姿态角过大，视线未指向地面！")
+
+    delta_x = altitude_m * (v_ox / v_oz)
+    delta_y = altitude_m * (v_oy / v_oz)
+
+    delta_n = delta_x * math.cos(heading_rad) - delta_y * math.sin(heading_rad)
+    delta_e = delta_x * math.sin(heading_rad) + delta_y * math.cos(heading_rad)
+
+    R_e = 6371000.0
+    lat_target_rad = lat0_rad + (delta_n / R_e)
+    lon_target_rad = lon0_rad + (delta_e / (R_e * math.cos(lat0_rad)))
+
+    return math.degrees(lon_target_rad), math.degrees(lat_target_rad)
+
+
+def calculate_target_lonlat(tle_line1, tle_line2, altitude_m, roll_deg, pitch_deg, yaw_deg, roll_compensate = -0.019879, pitch_compensate = -1.056718, yaw_compensate = 0.0, alpha = 0.15, obs_time=None):
     """
     根据 TLE、实测高度和姿态角计算卫星视线与地面的交点经纬度。
     
@@ -46,10 +109,15 @@ def calculate_target_lonlat(tle_line1, tle_line2, altitude_m, roll_deg, pitch_de
     x_heading = math.cos(lat0_rad) * math.sin(lat1_rad) - math.sin(lat0_rad) * math.cos(lat1_rad) * math.cos(dlon)
     heading_rad = math.atan2(y_heading, x_heading) # 航向角 (相对正北，顺时针)
     
+    
+    roll_deg = roll_deg + roll_compensate * alpha
+    pitch_deg = pitch_deg + pitch_compensate * alpha
+    yaw_deg = yaw_deg + yaw_compensate * alpha
+
     roll = math.radians(roll_deg)
     pitch = math.radians(pitch_deg)
     yaw = math.radians(yaw_deg)
-    
+
     # 根据 Z-Y-X 旋转顺序，推导视线 [0,0,1]^T 旋转后的向量
     v_ox = math.cos(yaw)*math.sin(pitch)*math.cos(roll) + math.sin(yaw)*math.sin(roll)
     v_oy = math.sin(yaw)*math.sin(pitch)*math.cos(roll) - math.cos(yaw)*math.sin(roll)
@@ -76,4 +144,5 @@ def calculate_target_lonlat(tle_line1, tle_line2, altitude_m, roll_deg, pitch_de
     target_lon_deg = math.degrees(lon_target_rad)
     
     return target_lon_deg, target_lat_deg
+
 

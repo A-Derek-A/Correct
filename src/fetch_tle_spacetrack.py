@@ -2,6 +2,8 @@ import os
 import argparse
 import requests
 from datetime import datetime
+from pathlib import Path
+
 
 LOGIN_URL = "https://www.space-track.org/ajaxauth/login"
 # TLE 查询接口，使用 basicspacedata/query
@@ -12,6 +14,8 @@ TLE_URL_TEMPLATE = (
     "https://www.space-track.org/basicspacedata/query/"
     "class/gp_history/NORAD_CAT_ID/{norad_id}/EPOCH/{start}--{end}/format/tle"
 )
+WORK_PATH = Path(__file__).parent.parent
+DATA_PATH = WORK_PATH / "data" / "TLE"
 
 
 def fetch_tle(norad_id: int, start_date: str, end_date: str, out_path: str) -> None:
@@ -61,8 +65,8 @@ def fetch_tle(norad_id: int, start_date: str, end_date: str, out_path: str) -> N
         tle_text = resp.text.strip()
         if not tle_text:
             raise RuntimeError("指定时间范围内未返回任何 TLE。")
-
-        with open(out_path, "w", encoding="utf-8") as f:
+        
+        with open(DATA_PATH / out_path, "w", encoding="utf-8") as f:
             f.write(tle_text + "\n")
 
         print(f"TLE 已保存到: {out_path}")
